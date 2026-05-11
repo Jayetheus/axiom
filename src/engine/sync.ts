@@ -11,9 +11,9 @@ export class SyncManager {
 
   /**
    * The master trigger. Call this when the OS reports network is back online.
+   * Automatically sorts requests so 'urgent' items bypass 'background' items.
    */
   public async flushQueue(): Promise<void> {
-    // Prevent overlapping syncs if the network toggles rapidly
     if (this.isSyncing) return;
     this.isSyncing = true;
 
@@ -21,14 +21,20 @@ export class SyncManager {
       const pending = await this.storage.getAll();
       
       if (pending.length === 0) {
-        this.isSyncing = false;
         return;
       }
 
       console.log(`[Axiom] Network restored. Syncing ${pending.length} queued requests...`);
 
-      // We process sequentially to maintain the order of user actions
-      for (const request of pending) {
+      // MITIGATION 3: Priority Lanes (Urgent requests jump the line)
+      // If priorities match, it falls back to timestamp (FIFO) to maintain action order.
+      const sortedQueue = pending.sort((a, b) => {
+        if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
+        if (a.priority !== 'urgent' && b.priority === 'urgent') return 1;
+        return a.timestamp - b.timestamp;
+      });
+
+      for (const request of sortedQueue) {
         await this.processRequest(request);
       }
       
@@ -48,17 +54,26 @@ export class SyncManager {
       try {
         reqToSync = await this.config.onBeforeSync(request);
       } catch (error) {
-        console.error(`[Axiom] onBeforeSync failed for ${request.id}. Skipping.`);
+        console.error(`[Axiom] onBeforeSync failed for ${request.id}. Marking as failure.`);
+        await this.handleFailure(request); // FIX: Ensure we increment retry count if this fails
         return; 
       }
     }
+
+    // Apply the global timeout to background syncing as well
+    const controller = new AbortController();
+    const timeoutMs = this.config.timeout || 10000; // Default 10s for background syncs
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(reqToSync.url, {
         method: reqToSync.method,
         headers: reqToSync.headers,
-        body: reqToSync.body
+        body: reqToSync.body,
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       // If it's a success OR a permanent 400 error (like bad data), remove it.
       if (response.ok || (response.status >= 400 && response.status < 500)) {
@@ -69,7 +84,8 @@ export class SyncManager {
         await this.handleFailure(reqToSync);
       }
     } catch (error) {
-      // Network dropped again mid-sync.
+      clearTimeout(timeoutId);
+      // Network dropped again mid-sync or timeout was reached.
       await this.handleFailure(reqToSync);
     }
   }
@@ -79,7 +95,7 @@ export class SyncManager {
    */
   private async handleFailure(request: QueuedRequest): Promise<void> {
     request.retryCount += 1;
-    const maxRetries = this.config.maxRetries || 3;
+    const maxRetries = this.config.maxRetries ?? 3; // Use nullish coalescing so 0 is valid
 
     if (request.retryCount >= maxRetries) {
       console.warn(`[Axiom] Request ${request.id} failed ${maxRetries} times. Moving to Dead Letter.`);
