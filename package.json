@@ -1,12 +1,18 @@
 {
-  "name": "axiom",
-  "version": "0.0.1",
+  "name": "@jayethian/axiom",
+  "version": "0.1.0",
+  "maintainers": [
+    "Jayetheus"
+  ],
   "description": "A resilient, offline-first fetch wrapper",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -15,9 +21,13 @@
   "license": "MIT",
   "devDependencies": {
     "@types/react": "^19.2.14",
+    "react": "^19.2.6",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
+  },
+  "peerDependencies": {
+    "react": ">=17.0.0"
   },
   "packageManager": "yarn@4.12.0"
 }

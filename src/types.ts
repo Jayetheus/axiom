@@ -6,7 +6,7 @@ export interface QueuedRequest {
   url: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers: Record<string, string>;
-  body?: string; // Serialized JSON
+  body?: string; 
   priority: RequestPriority;
   retryCount: number;
 }

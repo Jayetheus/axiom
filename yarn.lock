@@ -224,6 +224,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@jayethian/axiom@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@jayethian/axiom@workspace:."
+  dependencies:
+    "@types/react": "npm:^19.2.14"
+    react: "npm:^19.2.6"
+    tsup: "npm:^8.5.1"
+    typescript: "npm:^6.0.3"
+    vitest: "npm:^4.1.6"
+  peerDependencies:
+    react: ">=17.0.0"
+  languageName: unknown
+  linkType: soft
+
 "@jridgewell/gen-mapping@npm:^0.3.2":
   version: 0.3.13
   resolution: "@jridgewell/gen-mapping@npm:0.3.13"
@@ -735,17 +749,6 @@ __metadata:
   checksum: 10c0/bbbcb117ac6480138f8c93cf7f535614282dea9dc828f540cdece85e3c665e8f78958b96afac52f29ff883c72638e6a87d469ecc9fe5bc902df03ed24a55dba8
   languageName: node
   linkType: hard
-
-"axiom@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "axiom@workspace:."
-  dependencies:
-    "@types/react": "npm:^19.2.14"
-    tsup: "npm:^8.5.1"
-    typescript: "npm:^6.0.3"
-    vitest: "npm:^4.1.6"
-  languageName: unknown
-  linkType: soft
 
 "bundle-require@npm:^5.1.0":
   version: 5.1.0
@@ -1358,6 +1361,13 @@ __metadata:
   version: 6.1.0
   resolution: "proc-log@npm:6.1.0"
   checksum: 10c0/4f178d4062733ead9d71a9b1ab24ebcecdfe2250916a5b1555f04fe2eda972a0ec76fbaa8df1ad9c02707add6749219d118a4fc46dc56bdfe4dde4b47d80bb82
+  languageName: node
+  linkType: hard
+
+"react@npm:^19.2.6":
+  version: 19.2.6
+  resolution: "react@npm:19.2.6"
+  checksum: 10c0/66afde33b9a9ee87b1e1cae39d8e7e040d1262e719524fd70660c4d4ce79929c532ac19fc3df5a911edaf02768fdf2c49de4ede1ba99bc6aad72796e0e26e798
   languageName: node
   linkType: hard
 

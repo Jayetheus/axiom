@@ -36,7 +36,7 @@ export class AxiomEngine {
   }
 
   /**
-   * The core POST method. Designed to feel exactly like Axios.
+   * The core POST method. 
    */
   public async post<T>(
     url: string, 
@@ -56,6 +56,31 @@ export class AxiomEngine {
         ...(this.config.defaultHeaders || {})
       },
       body: data ? JSON.stringify(data) : undefined,
+      priority: options?.priority || 'urgent',
+      retryCount: 0
+    };
+
+    return this.attemptFetch<T>(request);
+  }
+
+  /** The core GET method.
+   * Note: GET requests typically don't have a body, but we still want to queue them if offline.
+   */
+  public async get<T>(
+    url: string, 
+    options?: { priority?: RequestPriority }
+  ): Promise<{ data?: T; status: number; isQueued: boolean }> {
+    
+    const fullUrl = this.config.baseURL ? `${this.config.baseURL}${url}` : url;
+    
+    const request: QueuedRequest = {
+      id: this.generateId(),
+      timestamp: Date.now(),
+      url: fullUrl,
+      method: 'GET',
+      headers: {
+        ...(this.config.defaultHeaders || {})
+      },
       priority: options?.priority || 'urgent',
       retryCount: 0
     };
