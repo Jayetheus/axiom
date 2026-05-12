@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/jayethian/axiom/main/assets/logo.png" alt="axiom logo" width="400" />
+  <img src="https://raw.githubusercontent.com/jayetheus/axiom/main/assets/logo.png" alt="axiom logo" width="400" />
   <h1>Axiom</h1>
 
   <h3>Resilient, offline-first networking for modern React, Next.js, and React Native apps.</h3>
@@ -349,8 +349,8 @@ Passed as the third parameter to `axiom.post`, `axiom.get`, etc.
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://www.google.com/search?q=https://github.com/jayethian/axiom/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://www.google.com/search?q=https://github.com/jayetheus/axiom/issues).
 
 ## 📄 License
 
-This project is [MIT](https://opensource.org/licenses/MIT) licensed. Built with ⚡️ by [Jayetheus](https://www.google.com/search?q=https://github.com/jayethian).
+This project is [MIT](https://opensource.org/licenses/MIT) licensed. Built with ⚡️ by [Jayetheus](https://www.google.com/search?q=https://github.com/jayetheus).
