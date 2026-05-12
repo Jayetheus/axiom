@@ -143,9 +143,9 @@ export class AxiomEngine {
     return this.attemptFetch<T>(request, timeoutMs);
   }
 
-  /**
+ /**
    * Internal logic to fire the request or catch the network drop.
-   * Handles timeout cancellations via AbortController.
+   * Handles timeout cancellations and triggers Global Interceptors.
    */
   private async attemptFetch<T>(request: QueuedRequest, timeoutMs: number): Promise<{ data?: T; status: number; isQueued: boolean }> {
       const controller = new AbortController();
@@ -163,11 +163,27 @@ export class AxiomEngine {
 
       if (response.ok) {
         const responseData = await response.json().catch(() => null);
+        
+        if (this.config.onResponse) {
+          await this.config.onResponse(responseData, response.status, request);
+        }
+        
         return { data: responseData, status: response.status, isQueued: false };
       }
 
+      if (response.status >= 400 && response.status < 500) {
+        if (this.config.onError) {
+          await this.config.onError(response.status, new Error(`Client Error: ${response.status}`), request);
+        }
+        return { status: response.status, isQueued: false };
+      }
+
       if (response.status >= 500) {
-        throw new Error('Server Error');
+        if (this.config.onError) {
+          await this.config.onError(response.status, new Error(`Server Error: ${response.status}`), request);
+        }
+        await this.enqueueRequest(request);
+        return { status: 202, isQueued: true };
       }
 
       return { status: response.status, isQueued: false };
@@ -177,6 +193,11 @@ export class AxiomEngine {
 
         if(error.name === 'AbortError') {
           console.warn(`[Axiom] Request to ${request.url} timed out after ${timeoutMs}ms. Queuing for retry.`);
+        }
+        
+        // 4. NETWORK DROP / TIMEOUT: Status is null because it never reached the server
+        if (this.config.onError) {
+          await this.config.onError(null, error, request);
         }
         
         await this.enqueueRequest(request);

@@ -49,20 +49,19 @@ export class SyncManager {
   private async processRequest(request: QueuedRequest): Promise<void> {
     let reqToSync = request;
 
-    // MITIGATION 1: Just-in-Time Headers (Refresh Auth Tokens)
+    // MITIGATION 1: Just-in-Time Headers
     if (this.config.onBeforeSync) {
       try {
         reqToSync = await this.config.onBeforeSync(request);
       } catch (error) {
         console.error(`[Axiom] onBeforeSync failed for ${request.id}. Marking as failure.`);
-        await this.handleFailure(request); // FIX: Ensure we increment retry count if this fails
+        await this.handleFailure(request); 
         return; 
       }
     }
 
-    // Apply the global timeout to background syncing as well
     const controller = new AbortController();
-    const timeoutMs = this.config.timeout || 10000; // Default 10s for background syncs
+    const timeoutMs = this.config.timeout || 10000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
@@ -75,17 +74,40 @@ export class SyncManager {
 
       clearTimeout(timeoutId);
 
-      // If it's a success OR a permanent 400 error (like bad data), remove it.
-      if (response.ok || (response.status >= 400 && response.status < 500)) {
+      if (response.ok) {
+        const responseData = await response.json().catch(() => null);
+        
+        // INTERCEPTOR: Global Success (Background Sync)
+        if (this.config.onResponse) {
+          await this.config.onResponse(responseData, response.status, reqToSync);
+        }
+
         await this.storage.remove(reqToSync.id);
         console.log(`[Axiom] Request ${reqToSync.id} synced successfully.`);
+      
+      } else if (response.status >= 400 && response.status < 500) {
+        // INTERCEPTOR: Client Error (Background Sync) - Bad data, remove from queue
+        if (this.config.onError) {
+          await this.config.onError(response.status, new Error(`Client Error: ${response.status}`), reqToSync);
+        }
+        await this.storage.remove(reqToSync.id);
+      
       } else {
-        // It's a 500 Server Error. Treat as a failure and retry later.
+        // INTERCEPTOR: Server Error (Background Sync) - Keep in queue and retry later
+        if (this.config.onError) {
+          await this.config.onError(response.status, new Error(`Server Error: ${response.status}`), reqToSync);
+        }
         await this.handleFailure(reqToSync);
       }
-    } catch (error) {
+
+    } catch (error: any) {
       clearTimeout(timeoutId);
-      // Network dropped again mid-sync or timeout was reached.
+      
+      // INTERCEPTOR: Network Drop / Timeout (Background Sync)
+      if (this.config.onError) {
+        await this.config.onError(null, error, reqToSync);
+      }
+      
       await this.handleFailure(reqToSync);
     }
   }
