@@ -6,7 +6,8 @@ export class SyncManager {
 
   constructor(
     private storage: AxiomStorageAdapter,
-    private config: AxiomConfig
+    private config: AxiomConfig,
+    private engine: any
   ) {}
 
   /**
@@ -54,7 +55,7 @@ export class SyncManager {
       try {
         reqToSync = await this.config.onBeforeSync(request);
       } catch (error) {
-        console.error(`[Axiom] onBeforeSync failed for ${request.id}. Marking as failure.`);
+        this.engine.log("error", `onBeforeSync failed for ${request.id}. Marking as failure.`);
         await this.handleFailure(request); 
         return; 
       }
@@ -77,13 +78,13 @@ export class SyncManager {
       if (response.ok) {
         const responseData = await response.json().catch(() => null);
         
-        // INTERCEPTOR: Global Success (Background Sync)
+    
         if (this.config.onResponse) {
           await this.config.onResponse(responseData, response.status, reqToSync);
         }
 
         await this.storage.remove(reqToSync.id);
-        console.log(`[Axiom] Request ${reqToSync.id} synced successfully.`);
+        this.engine.log("info", `Request ${reqToSync.id} synced successfully.`);
       
       } else if (response.status >= 400 && response.status < 500) {
         // INTERCEPTOR: Client Error (Background Sync) - Bad data, remove from queue
@@ -117,17 +118,16 @@ export class SyncManager {
    */
   private async handleFailure(request: QueuedRequest): Promise<void> {
     request.retryCount += 1;
-    const maxRetries = this.config.maxRetries ?? 3; // Use nullish coalescing so 0 is valid
+    const maxRetries = this.config.maxRetries ?? 3; 
 
     if (request.retryCount >= maxRetries) {
-      console.warn(`[Axiom] Request ${request.id} failed ${maxRetries} times. Moving to Dead Letter.`);
+      this.engine.log("warn", `[Axiom] Request ${request.id} failed ${maxRetries} times. Moving to Dead Letter.`);
       await this.storage.remove(request.id);
       
       if (this.config.onDeadLetter) {
         this.config.onDeadLetter(request, new Error('Max retries exceeded'));
       }
     } else {
-      // Save the updated retry count back to storage
       await this.storage.save(request);
     }
   }

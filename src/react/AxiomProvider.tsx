@@ -1,54 +1,78 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { axiom } from '../engine/fetcher';
-import { AxiomConfig } from '../types';
+import { AxiomConfig, QueuedRequest } from '../types';
 import { AxiomStorageAdapter } from '../adapters';
 
 interface AxiomContextType {
   isOnline: boolean;
   forceSync: () => Promise<void>;
+  deadLetters: QueuedRequest[];
+  clearDeadLetters: () => void;
 }
 
-// Create a safe default context
 const AxiomContext = createContext<AxiomContextType>({
   isOnline: true,
   forceSync: async () => {},
+  deadLetters: [],
+  clearDeadLetters: () => {},
 });
 
 export const AxiomProvider: React.FC<{
   config: AxiomConfig;
   storageAdapter?: AxiomStorageAdapter;
-  /** * A function that takes a callback, calls it whenever network state changes, 
-   * and returns an unsubscribe function.
-   */
-  networkListener: (callback: (isOnline: boolean) => void) => any;
+  /** Optional: Pass a custom listener for React Native (NetInfo). If omitted, defaults to Web APIs. */
+  networkListener?: (callback: (isOnline: boolean) => void) => any;
   children: React.ReactNode;
 }> = ({ config, storageAdapter, networkListener, children }) => {
   const [isOnline, setIsOnline] = useState(true);
+  const [deadLetters, setDeadLetters] = useState<QueuedRequest[]>([]);
+
+  const enhancedConfig: AxiomConfig = {
+    ...config,
+    onDeadLetter: (request, error) => {
+      setDeadLetters(prev => [...prev, request]);
+      if (config.onDeadLetter) config.onDeadLetter(request, error);
+    }
+  };
 
   useEffect(() => {
-    // 1. Boot up the Axiom engine
-    axiom.create(config, storageAdapter);
+    axiom.create(enhancedConfig, storageAdapter);
 
-    // 2. Attach the OS-level network listener
-    const unsubscribe = networkListener((onlineStatus) => {
-      setIsOnline(onlineStatus);
-      
-      // 3. The Magic: If the internet comes back, automatically flush the queue
-      if (onlineStatus) {
+    let unsubscribe: any;
+
+    const handleNetworkChange = (status: boolean) => {
+      setIsOnline(status);
+      if (status) {
         axiom.forceSync();
       }
-    });
-
-    // Cleanup listener on unmount
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
     };
-  }, [config, storageAdapter, networkListener]);
+
+    if (networkListener) {
+      unsubscribe = networkListener(handleNetworkChange);
+    } else if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      
+      const goOnline = () => handleNetworkChange(true);
+      const goOffline = () => handleNetworkChange(false);
+
+      window.addEventListener('online', goOnline);
+      window.addEventListener('offline', goOffline);
+
+      unsubscribe = () => {
+        window.removeEventListener('online', goOnline);
+        window.removeEventListener('offline', goOffline);
+      };
+    }
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [enhancedConfig, storageAdapter, networkListener]);
+
+  const clearDeadLetters = useCallback(() => setDeadLetters([]), []);
 
   return (
-    <AxiomContext.Provider value={{ isOnline, forceSync: () => axiom.forceSync() }}>
+    <AxiomContext.Provider value={{ isOnline, forceSync: () => axiom.forceSync(), deadLetters, clearDeadLetters }}>
       {children}
     </AxiomContext.Provider>
   );

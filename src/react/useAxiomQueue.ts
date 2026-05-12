@@ -1,12 +1,16 @@
 import { useAxiomContext } from './AxiomProvider';
 
 export function useAxiomQueue() {
-  const { isOnline, forceSync } = useAxiomContext();
+  const { isOnline, forceSync, deadLetters, clearDeadLetters } = useAxiomContext();
 
   return {
     /** Boolean indicating if the device currently has an active connection */
     isOnline,
     /** Manually trigger the background sync manager */
     forceSync,
+    /** Array of requests that failed permanently (exceeded max retries) */
+    deadLetters,
+    /** Clears the dead letter queue from the UI state */
+    clearDeadLetters
   };
 }

@@ -2,11 +2,50 @@ import { AxiomConfig, AxiomRequestOptions, QueuedRequest, RequestPriority } from
 import { AxiomStorageAdapter } from '../adapters';
 import { MemoryStorageAdapter } from '../adapters/memory';
 import { SyncManager } from './sync';
+import { resolveStorageAdapter } from '../adapters/resolver';
+
+type AxiomEvent = 'syncStart' | 'syncSuccess' | 'syncError' | 'deadLetter';
+type AxiomEventListener = (...args: any[]) => void;
 
 export class AxiomEngine {
   private config: AxiomConfig = {};
   private storage: AxiomStorageAdapter = new MemoryStorageAdapter(); 
   private syncManager!: SyncManager;
+  private listeners: Map<AxiomEvent, Set<AxiomEventListener>> = new Map();
+
+  /** Internal verbose logger */
+  public log(...args: any[]): void {
+    if (this.config.debug) {
+
+      if(args[0] === 'error') {
+        console.error('🔴 [Axiom Error]', ...args);
+      } else if(args[0] === 'warn') {
+        console.warn('🟠 [Axiom Warn]', ...args);
+      } else if(args[0] === 'info') {
+        console.info('🔵 [Axiom Info]', ...args);
+      } else {
+        console.log('⚪ [Axiom Debug]', ...args);
+      }
+    }
+  }
+
+  /** Registers an event listener for Axiom lifecycle events (e.g., sync attempts, successes, failures). */
+  public on(event: AxiomEvent, listener: AxiomEventListener): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(listener);
+  }
+
+  /** Unregisters a previously registered event listener. */
+  public off(event: AxiomEvent, listener: AxiomEventListener): void {
+    this.listeners.get(event)?.delete(listener);
+  }
+
+  /** Internal method to emit events to registered listeners. */
+  public emit(event: AxiomEvent, ...args: any[]): void {
+    this.listeners.get(event)?.forEach(listener => listener(...args));
+  }
 
   /**
    * Initializes the Axiom engine with global configuration and a storage adapter.
@@ -14,13 +53,20 @@ export class AxiomEngine {
    * * @param config - Global configuration (baseURL, timeouts, custom headers, etc.)
    * @param storageAdapter - Optional custom adapter (e.g., MMKV). Defaults to in-memory storage.
    */
-  public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
+public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
     this.config = config;
+    
+    if (this.config.debug) this.log("info","Engine initializing with config:", config);
+
     if (storageAdapter) {
       this.storage = storageAdapter;
+      this.log("info","Custom storage adapter injected manually.");
+    } else {
+      const fallback = config.fallbackAdapter || 'memory';
+      this.storage = resolveStorageAdapter(fallback, !!config.debug);
     }
 
-    this.syncManager = new SyncManager(this.storage, this.config);
+    this.syncManager = new SyncManager(this.storage, this.config, this);
   }
 
   /**
@@ -29,7 +75,7 @@ export class AxiomEngine {
    */
   public async forceSync(): Promise<void> {
     if (!this.syncManager) {
-      console.error("[Axiom] Engine not initialized. Call axiom.create() first.");
+      this.log("error","[Axiom] Engine not initialized. Call axiom.create() first.");
       return;
     }
     await this.syncManager.flushQueue();
@@ -123,9 +169,8 @@ export class AxiomEngine {
     const fullUrl = this.config.baseURL ? `${this.config.baseURL}${url}` : url;
     
     const headers: Record<string, string> = { ...(this.config.defaultHeaders || {}) };
-    if (options?.headers) {
-      Object.assign(headers, options.headers);
-    }
+    if (options?.headers) Object.assign(headers, options.headers);
+    if (data) headers['Content-Type'] = 'application/json';
     
     const request: QueuedRequest = {
       id: this.generateId(),
@@ -135,13 +180,14 @@ export class AxiomEngine {
       headers,
       body: data ? JSON.stringify(data) : undefined,
       priority: options?.priority || 'urgent',
-      retryCount: 0
+      retryCount: 0,
+      metadata: options?.metadata 
     };
 
     const timeoutMs = options?.timeout || this.config.timeout || 8000;
-
     return this.attemptFetch<T>(request, timeoutMs);
   }
+
 
  /**
    * Internal logic to fire the request or catch the network drop.
@@ -210,7 +256,7 @@ export class AxiomEngine {
    * Saves the request to the configured storage adapter.
    */
   private async enqueueRequest(request: QueuedRequest): Promise<void> {
-    console.warn(`[Axiom] Network unreachable. Queuing request ${request.id}`);
+    this.log(`Network unreachable. Queuing request ${request.id}`);
     await this.storage.save(request);
   }
 }
