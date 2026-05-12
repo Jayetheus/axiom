@@ -4,7 +4,7 @@ import { MemoryStorageAdapter } from '../adapters/memory';
 import { SyncManager } from './sync';
 import { resolveStorageAdapter } from '../adapters/resolver';
 
-type AxiomEvent = 'syncStart' | 'syncSuccess' | 'syncError' | 'deadLetter';
+type AxiomEvent = 'syncStart' | 'syncSuccess' | 'syncError' | 'deadLetter' | 'requestCancelled';
 type AxiomEventListener = (...args: any[]) => void;
 
 export class AxiomEngine {
@@ -16,15 +16,14 @@ export class AxiomEngine {
   /** Internal verbose logger */
   public log(...args: any[]): void {
     if (this.config.debug) {
-
       if(args[0] === 'error') {
-        console.error('🔴 [Axiom Error]', ...args);
+        console.error('🛑 [Axiom Error]', ...args);
       } else if(args[0] === 'warn') {
-        console.warn('🟠 [Axiom Warn]', ...args);
+        console.warn('⚠️ [Axiom Warn]', ...args);
       } else if(args[0] === 'info') {
-        console.info('🔵 [Axiom Info]', ...args);
+        console.info('ℹ️ [Axiom Info]', ...args);
       } else {
-        console.log('⚪ [Axiom Debug]', ...args);
+        console.log('🐛 [Axiom Debug]', ...args);
       }
     }
   }
@@ -79,6 +78,34 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
       return;
     }
     await this.syncManager.flushQueue();
+  }
+
+  /**
+   * Retrieves all currently queued requests from the storage adapter.
+   * Useful for debugging or rendering an "Outbox" UI of pending actions.
+   * @returns Promise resolving to an array of queued requests with their metadata.
+   */
+  public async getQueue(): Promise<QueuedRequest[]> {
+    if (!this.storage) {
+      this.log("warn", "[Axiom] Engine not initialized. Cannot inspect queue.");
+      return [];
+    }
+    return this.storage.getAll();
+  }
+
+  /**
+   * Cancels and removes a specific request from the pending queue by its ID.
+   * @param id - The unique ID of the queued request to cancel.
+   * @returns Promise that resolves when the request is removed from storage.
+   */
+  public async cancelRequest(id: string): Promise<void> {
+    if (!this.storage) {
+      this.log("warn", "[Axiom] Engine not initialized. Cannot cancel request.");
+      return;
+    }
+    await this.storage.remove(id);
+    this.log("info", `[Axiom] Cancelled queued request ${id}`);
+    this.emit('requestCancelled', id); 
   }
 
   /**
@@ -256,7 +283,7 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    * Saves the request to the configured storage adapter.
    */
   private async enqueueRequest(request: QueuedRequest): Promise<void> {
-    this.log(`Network unreachable. Queuing request ${request.id}`);
+    this.log("warn", `Network unreachable. Queuing request ${request.id}`);
     await this.storage.save(request);
   }
 }
