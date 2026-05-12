@@ -1,13 +1,35 @@
 {
   "name": "@jayethian/axiom",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "maintainers": [
     "Jayetheus"
   ],
-  "description": "A resilient, offline-first fetch wrapper",
+  "description": "A resilient, offline-first fetch wrapper for React Native & Next.js.",
+  "keywords": [
+    "react-native",
+    "nextjs",
+    "fetch",
+    "axios",
+    "offline-first",
+    "sync",
+    "network",
+    "queue",
+    "indexeddb"
+  ],
+  "homepage": "https://github.com/jayethian/axiom#readme",
+  "bugs": {
+    "url": "https://github.com/jayethian/axiom/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayethian/axiom.git"
+  },
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
