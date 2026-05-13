@@ -8,7 +8,7 @@
 # Whether you use PnP or not, the node_modules folder is often used to store
 # build artifacts that should be gitignored
 node_modules
-dist
+dist/
 build
 
 # Swap the comments on the following lines if you wish to use zero-installs
