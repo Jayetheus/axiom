@@ -1,4 +1,4 @@
-import { AxiomStorageAdapter } from "./index";
+import type { AxiomStorageAdapter } from "../types";
 import { MemoryStorageAdapter } from "./memory";
 import { LocalStorageAdapter } from "./localstorage";
 import { IndexedDBStorageAdapter } from "./indexeddb";
@@ -17,6 +17,19 @@ export function resolveStorageAdapter(
   debug: boolean = false,
 ): AxiomStorageAdapter {
   const isBrowser = typeof window !== "undefined";
+  const hasIndexedDB =
+    isBrowser && typeof window.indexedDB !== "undefined" && !!window.indexedDB;
+  const hasLocalStorage = (() => {
+    if (!isBrowser) return false;
+    try {
+      const testKey = "__axiom_storage_probe__";
+      window.localStorage.setItem(testKey, "1");
+      window.localStorage.removeItem(testKey);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   if (!isBrowser) {
     if (debug)
@@ -26,15 +39,12 @@ export function resolveStorageAdapter(
     return new MemoryStorageAdapter();
   }
 
-  if (preference === "indexeddb" && window.indexedDB) {
+  if (preference === "indexeddb" && hasIndexedDB) {
     if (debug) console.log("[Axiom Debug] IndexedDB adapter initialized.");
     return new IndexedDBStorageAdapter();
   }
 
-  if (
-    (preference === "localstorage" || preference === "indexeddb") &&
-    window.localStorage
-  ) {
+  if ((preference === "localstorage" || preference === "indexeddb") && hasLocalStorage) {
     if (debug)
       console.log(
         `[Axiom Debug] ${preference === "indexeddb" ? "IndexedDB unavailable. " : ""}LocalStorage adapter initialized.`,
