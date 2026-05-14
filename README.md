@@ -1,9 +1,8 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/jayetheus/axiom/main/assets/logo.png" alt="axiom logo" width="400" />
   <h1>Axiom</h1>
+  <h3>Offline-first fetch with persistent replay, backoff, and React and React Native helpers.</h3>
 
-  <h3>Resilient, offline-first networking for modern React, Next.js, and React Native apps.</h3>
-  
   <p>
     <a href="https://www.npmjs.com/package/@jayethian/axiom">
       <img src="https://img.shields.io/npm/v/@jayethian/axiom.svg?style=flat-square" alt="npm version" />
@@ -14,59 +13,24 @@
     <a href="https://opensource.org/licenses/MIT">
       <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" />
     </a>
-    <img src="https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg?style=flat-square" alt="TypeScript" />
   </p>
 </div>
 
-<br />
+## What Axiom Guarantees
 
-## The Problem
-Standard HTTP clients like **Axios** or **Fetch** assume a stable connection. When a user submits data in a dead zone (elevators, basements, rural areas), the request simply fails. Without a complex, manual retry system written from scratch, **that data is gone forever.**
+Axiom is an offline-first wrapper around `fetch` for React, Next.js, React Native, and vanilla TypeScript apps. When a supported request fails because the network is unavailable or unstable, the request is serialized into a local queue and replayed later.
 
-## The Axiom Way
-Axiom intercepts network failures and timeouts. Instead of throwing an error, it serializes the request and safely moves it to a persistent local queue. When the connection returns, Axiom flushes the queue automatically, in the background.
-
-```typescript
-// Standard Fetch: Fails and loses data when offline.
-await fetch('/api/orders', { method: 'POST', body: data }); 
-
-// Axiom: Intercepts drop, queues safely, and syncs when back online.
-await axiom.post('/api/orders', data); 
-
-```
-
----
-
-## Table of Contents
-
-1. [Features](https://www.google.com/search?q=%23-features)
-2. [Installation](https://www.google.com/search?q=%23-installation)
-3. [React / Next.js Setup](https://www.google.com/search?q=%23-react--nextjs-setup-zero-config)
-4. [React Native Setup](https://www.google.com/search?q=%23-react-native-setup)
-5. [Vanilla JS / Node Setup](https://www.google.com/search?q=%23-vanilla-js--node-setup)
-6. [Core Hooks (`useAxiomQueue`)](https://www.google.com/search?q=%23-core-hooks)
-7. [Advanced Architecture](https://www.google.com/search?q=%23-advanced-architecture)
-* [Global Interceptors](https://www.google.com/search?q=%23global-interceptors)
-* [Priority Lanes](https://www.google.com/search?q=%23priority-lanes)
-* [Queue Inspection & "Outbox" UI](https://www.google.com/search?q=%23queue-inspection--outbox-ui)
-* [Storage Adapters (MMKV, IndexedDB)](https://www.google.com/search?q=%23storage-adapters)
-
-
-8. [API Reference](https://www.google.com/search?q=%23-api-reference)
-
----
+Important: Axiom provides **at-least-once delivery**, not exactly-once execution. To make delayed writes safe in production, your backend should honor the `Idempotency-Key` header that Axiom sends for mutations by default.
 
 ## Features
 
-* **📱 Mobile-First Resilience:** Specifically tuned to handle spotty connectivity, aggressive timeouts, and background execution.
-* **🧠 Smart Fallback Storage:** Automatically detects your environment and falls back to the safest storage (`IndexedDB` for Web, `Memory` for SSR/React Native) without crashing.
-* **🔄 Autonomous Background Sync:** Replays the queue the moment a signal is detected.
-* **⚡ Priority Lanes:** Ensure critical data (e.g., payments) jumps to the front of the queue ahead of background tasks (e.g., analytics).
-* **🛡️ Just-In-Time Headers:** Refresh Auth Tokens immediately before syncing to prevent `401 Unauthorized` errors on delayed requests.
-* **🔌 Global Interceptors:** Catch success and error events globally, even when requests resolve in the background hours later.
-* **🪦 Dead Letter Queues:** Protects your app from infinite loops by isolating permanently failing requests and exposing them to the UI for user intervention.
-
----
+- Persistent queue storage with `IndexedDB`, `localStorage`, or a custom adapter.
+- Automatic idempotency-key injection for `POST`, `PUT`, `PATCH`, and `DELETE`.
+- Queue deduplication for matching idempotency or payload fingerprints.
+- Exponential retry backoff with jitter and dead-letter persistence.
+- Batched replay to avoid reconnect storms on weak connections.
+- React helpers for queue inspection, dead letters, and manual sync.
+- `onBeforeSync` hook for fresh auth headers right before replay.
 
 ## Installation
 
@@ -76,281 +40,220 @@ npm install @jayethian/axiom
 yarn add @jayethian/axiom
 # or
 pnpm add @jayethian/axiom
-
 ```
 
----
-
-## React & Next.js Setup (Zero-Config)
-Axiom includes a built-in event listener that automatically binds to the browser's `window.addEventListener('online')` APIs. For Next.js and standard React Web apps, setup requires zero boilerplate.
+## Quick Start
 
 ```tsx
-// App.tsx or layout.tsx
-import { AxiomProvider } from '@jayethian/axiom';
+import { AxiomProvider } from "@jayethian/axiom";
 
 export default function App({ children }) {
   return (
     <AxiomProvider
-      config={{ 
-        baseURL: '[https://api.myapp.com](https://api.myapp.com)', 
-        timeout: 8000 
+      config={{
+        baseURL: "https://api.myapp.com",
+        timeout: 8000,
+        maxRetries: 5,
       }}
-      // Automatically uses IndexedDB, falls back to LocalStorage if in Private Browsing
-      fallbackAdapter="indexeddb" 
+      fallbackAdapter="indexeddb"
     >
       {children}
     </AxiomProvider>
   );
 }
-
 ```
 
----
+## React and Next.js
 
-## React Native Setup
-
-React Native does not have a native DOM `window`, so you must provide a network listener (like `@react-native-community/netinfo`) and a persistent storage adapter (like `react-native-mmkv` or `AsyncStorage`).
+In web apps, `AxiomProvider` binds to the browser `online` and `offline` events automatically. For SSR frameworks like Next.js, persistent queue behavior only exists on the client, because server environments fall back to memory storage.
 
 ```tsx
-import { AxiomProvider } from '@jayethian/axiom';
-import NetInfo from '@react-native-community/netinfo';
-import { MMKVAdapter } from './my-adapters'; // See Storage Adapters below
+import { AxiomProvider } from "@jayethian/axiom";
+
+export function RootLayout({ children }) {
+  return (
+    <AxiomProvider
+      config={{
+        baseURL: "https://api.myapp.com",
+        fallbackAdapter: "indexeddb",
+      }}
+      fallbackAdapter="indexeddb"
+    >
+      {children}
+    </AxiomProvider>
+  );
+}
+```
+
+## React Native
+
+React Native does not expose `window`, `IndexedDB`, or `localStorage`, so you should provide both a network listener and a persistent adapter such as MMKV or AsyncStorage.
+
+```tsx
+import NetInfo from "@react-native-community/netinfo";
+import { MMKV } from "react-native-mmkv";
+import {
+  AxiomProvider,
+  AxiomStorageAdapter,
+  QueuedRequest,
+} from "@jayethian/axiom";
+
+const mmkv = new MMKV();
+
+class MMKVAdapter implements AxiomStorageAdapter {
+  private queueKey = "axiom_queue";
+  private deadLetterKey = "axiom_dead_letters";
+
+  private read(key: string): QueuedRequest[] {
+    const value = mmkv.getString(key);
+    return value ? JSON.parse(value) : [];
+  }
+
+  private write(key: string, value: QueuedRequest[]) {
+    mmkv.set(key, JSON.stringify(value));
+  }
+
+  async save(request: QueuedRequest) {
+    const queue = this.read(this.queueKey).filter(
+      (item) => item.id !== request.id,
+    );
+    queue.push(request);
+    this.write(this.queueKey, queue);
+  }
+
+  async getAll() {
+    return this.read(this.queueKey);
+  }
+
+  async remove(id: string) {
+    this.write(
+      this.queueKey,
+      this.read(this.queueKey).filter((item) => item.id !== id),
+    );
+  }
+
+  async clearAll() {
+    mmkv.delete(this.queueKey);
+  }
+
+  async saveDeadLetter(request: QueuedRequest) {
+    const queue = this.read(this.deadLetterKey).filter(
+      (item) => item.id !== request.id,
+    );
+    queue.push(request);
+    this.write(this.deadLetterKey, queue);
+  }
+
+  async getDeadLetters() {
+    return this.read(this.deadLetterKey);
+  }
+
+  async clearDeadLetters() {
+    mmkv.delete(this.deadLetterKey);
+  }
+}
 
 export default function App({ children }) {
   return (
     <AxiomProvider
-      config={{ baseURL: '[https://api.myapp.com](https://api.myapp.com)' }}
+      config={{ baseURL: "https://api.myapp.com" }}
       storageAdapter={new MMKVAdapter()}
-      networkListener={(callback) => {
-        return NetInfo.addEventListener(state => callback(!!state.isConnected));
-      }}
+      networkListener={(callback) =>
+        NetInfo.addEventListener((state) =>
+          callback(Boolean(state.isConnected)),
+        )
+      }
     >
       {children}
     </AxiomProvider>
   );
 }
-
 ```
 
----
+## Vanilla Usage
 
-## Vanilla JS / Node Setup
+```ts
+import { axiom } from "@jayethian/axiom";
 
-You do not need React to use Axiom. You can instantiate the engine directly and use our built-in **Event Emitter** to listen for background syncs.
-
-```typescript
-import { axiom } from '@jayethian/axiom';
-
-// 1. Initialize
-axiom.create({ baseURL: '[https://api.myapp.com](https://api.myapp.com)' });
-
-// 2. Listen to Background Events
-axiom.on('syncSuccess', (data, req) => {
-  console.log(`Background sync finished for ${req.url}`);
+axiom.create({
+  baseURL: "https://api.myapp.com",
+  maxRetries: 4,
 });
 
-axiom.on('deadLetter', (req) => {
-  console.error(`Request permanently failed after 3 retries:`, req);
+axiom.on("syncSuccess", ({ request, response }) => {
+  console.log("Synced", request.url, response);
 });
 
-// 3. Make Requests
-const response = await axiom.post('/users', { name: 'John' });
+axiom.on("syncFailure", ({ request, status, willRetry, nextRetryAt }) => {
+  console.log("Failed", request.url, status, willRetry, nextRetryAt);
+});
 
+await axiom.post("/orders", { sku: "book-1" });
 ```
 
----
-
-## Core Hooks
-
-The `useAxiomQueue` hook gives your UI complete visibility into the background engine. Keep your users informed when they are working offline.
+## React Hooks
 
 ```tsx
-import { axiom, useAxiomQueue } from '@jayethian/axiom';
+import { axiom, useAxiomQueue } from "@jayethian/axiom";
 
 export function CheckoutButton() {
-  const { isOnline, deadLetters, clearDeadLetters } = useAxiomQueue();
+  const { isOnline, deadLetters, refreshDeadLetters } = useAxiomQueue();
 
-  const onSave = async (data) => {
-    // If offline, returns a 202 and flags isQueued: true
-    const res = await axiom.post('/checkout', data, { priority: 'urgent' });
-    
-    if (res.isQueued) {
-      alert("Working offline. Your order will sync automatically!");
+  const submit = async () => {
+    const result = await axiom.post("/checkout", { sku: "book-1" });
+    if (result.isQueued) {
+      console.log("Queued for background replay");
+      await refreshDeadLetters();
     }
   };
 
   return (
-    <div>
-      {!isOnline && <Banner>You are offline. Actions will be saved.</Banner>}
-      {deadLetters.length > 0 && <ErrorBanner>Some actions failed to save.</ErrorBanner>}
-      
-      <button onClick={onSave}>Checkout</button>
-    </div>
+    <button disabled={!isOnline && deadLetters.length > 0} onClick={submit}>
+      Save order
+    </button>
   );
 }
-
 ```
 
----
+## Production Notes
 
-## Advanced Architecture
-
-### Global Interceptors
-
-Axiom allows you to intercept requests exactly like Axios, but it applies these rules to **background syncs** as well.
-
-```tsx
-<AxiomProvider
-  config={{
-    // Triggered globally whenever a request hard-fails (e.g., 500, 401)
-    onError: (status, error, request) => {
-      if (status === 401) {
-        AuthService.logout(); // Global logout on token expiration
-      }
-    },
-    // Triggered globally whenever ANY request succeeds (immediate or background)
-    onResponse: (data, status, request) => {
-      if (request.url.includes('/payment')) {
-        Analytics.track('Payment Successful');
-      }
-    }
-  }}
->
-
-```
-
-### Priority Lanes
-
-By default, Axiom queues requests First-In-First-Out (FIFO). However, you can force critical requests to jump to the front of the line when the network returns.
-
-```typescript
-// This stays at the back of the line (queued in the background)
-axiom.post('/analytics', logData, { priority: 'background' });
-
-// This jumps to the front and syncs first when the connection returns
-axiom.post('/chat/send', message, { priority: 'urgent' });
-
-```
-
-### Queue Inspection & "Outbox" UI
-
-Give your users the ability to see what is waiting to sync, and let them cancel actions before the network returns.
-
-```tsx
-import { useAxiomQueue } from '@jayethian/axiom';
-
-export function Outbox() {
-  const { inspectQueue, cancelRequest } = useAxiomQueue();
-  const [pending, setPending] = useState([]);
-
-  useEffect(() => {
-    inspectQueue().then(setPending);
-  }, []);
-
-  return (
-    <ul>
-      {pending.map(req => (
-        <li key={req.id}>
-          Pending: {req.method} {req.url}
-          <button onClick={() => cancelRequest(req.id)}>Cancel</button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-```
-
-### Just-In-Time Headers
-
-If a user is offline for 4 hours, their JWT will likely expire. If Axiom attempts to sync the old request, the server will reject it. `onBeforeSync` allows you to inject fresh tokens *milliseconds* before the queue flushes.
-
-```tsx
-<AxiomProvider
-  config={{
-    onBeforeSync: async (request) => {
-      const freshToken = await getValidAuthToken(); // Your logic
-      return {
-        ...request,
-        headers: { ...request.headers, Authorization: `Bearer ${freshToken}` }
-      };
-    }
-  }}
->
-
-```
-
-### Storage Adapters
-
-Axiom comes with `IndexedDB`, `LocalStorage`, and `Memory` adapters out of the box. For React Native, building a custom adapter using a high-performance library like MMKV is incredibly simple.
-
-```typescript
-import { MMKV } from 'react-native-mmkv';
-import { AxiomStorageAdapter, QueuedRequest } from '@jayethian/axiom';
-
-const mmkv = new MMKV();
-
-export class MMKVAdapter implements AxiomStorageAdapter {
-  private key = 'axiom_queue';
-
-  private getQ(): QueuedRequest[] {
-    const data = mmkv.getString(this.key);
-    return data ? JSON.parse(data) : [];
-  }
-
-  async save(req: QueuedRequest) { 
-    const q = this.getQ();
-    q.push(req);
-    mmkv.set(this.key, JSON.stringify(q)); 
-  }
-  
-  async getAll() { return this.getQ(); }
-  
-  async remove(id: string) { 
-    const q = this.getQ().filter(r => r.id !== id);
-    mmkv.set(this.key, JSON.stringify(q));
-  }
-  
-  async clearAll() { mmkv.delete(this.key); }
-}
-
-// Pass it to the provider:
-<AxiomProvider storageAdapter={new MMKVAdapter()} {...props} />
-
-```
-
----
+- Mutations are queued by default. `GET` requests are not queued unless `queueReads: true` is enabled.
+- Replay is sequential and batched. Axiom stops the current flush after the first transient failure and schedules exponential backoff with jitter.
+- Dead letters are persisted when the adapter supports `saveDeadLetter`, `getDeadLetters`, and `clearDeadLetters`.
+- `onBeforeSync` should only mutate headers or metadata. Do not change the queued request `id`.
 
 ## API Reference
 
 ### `AxiomConfig`
 
-| Property | Type | Default | Description |
-| --- | --- | --- | --- |
-| `baseURL` | `string` | `undefined` | Prepend this to all request URLs. |
-| `defaultHeaders` | `Record<string, string>` | `{}` | Global headers applied to all requests. |
-| `timeout` | `number` | `8000` | MS before a request is aborted and moved to the offline queue. |
-| `maxRetries` | `number` | `3` | Attempts before a background sync fails permanently. |
-| `fallbackAdapter` | `'indexeddb' | 'localstorage' | 'memory'` | `'memory'` | The internal adapter to use if `storageAdapter` is omitted. |
-| `debug` | `boolean` | `false` | Prints verbose engine logs to the console. |
+| Property           | Type                                        | Default     | Description                                            |
+| ------------------ | ------------------------------------------- | ----------- | ------------------------------------------------------ |
+| `baseURL`          | `string`                                    | `undefined` | Prepends a base URL to request paths.                  |
+| `defaultHeaders`   | `Record<string, string>`                    | `{}`        | Global headers applied to every request.               |
+| `timeout`          | `number`                                    | `8000`      | Foreground request timeout in milliseconds.            |
+| `maxRetries`       | `number`                                    | `3`         | Attempts before a queued request is dead-lettered.     |
+| `queueReads`       | `boolean`                                   | `false`     | Allows replaying failed `GET` requests.                |
+| `autoIdempotency`  | `boolean`                                   | `true`      | Injects an `Idempotency-Key` when one is not provided. |
+| `retryBaseDelayMs` | `number`                                    | `1000`      | Base delay for exponential retry backoff.              |
+| `retryMaxDelayMs`  | `number`                                    | `30000`     | Upper bound for retry backoff.                         |
+| `retryJitter`      | `number`                                    | `0.2`       | Randomization ratio used to spread retries.            |
+| `syncBatchSize`    | `number`                                    | `10`        | Maximum eligible requests processed per flush.         |
+| `fallbackAdapter`  | `"indexeddb" \| "localstorage" \| "memory"` | `"memory"`  | Built-in storage adapter preference.                   |
 
 ### `AxiomRequestOptions`
 
-Passed as the third parameter to `axiom.post`, `axiom.get`, etc.
-
-| Property | Type | Description |
-| --- | --- | --- |
-| `priority` | `'urgent' | 'background'` | Determines sort order when the queue flushes. |
-| `timeout` | `number` | Overrides the global timeout for this specific request. |
-| `headers` | `Record<string, string>` | Append or overwrite global headers for this request. |
-| `metadata` | `any` | Attach custom UI data to the request. Survives serialization. |
-
----
+| Property         | Type                       | Description                                            |
+| ---------------- | -------------------------- | ------------------------------------------------------ |
+| `priority`       | `"urgent" \| "background"` | Reorders queued items during replay.                   |
+| `timeout`        | `number`                   | Overrides the foreground timeout for a single request. |
+| `headers`        | `Record<string, string>`   | Appends or overwrites request headers.                 |
+| `idempotencyKey` | `string`                   | Explicit key for backend dedupe.                       |
+| `metadata`       | `any`                      | Custom metadata persisted with the queue entry.        |
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://www.google.com/search?q=https://github.com/jayetheus/axiom/issues).
+Contributions, issues, and feature requests are welcome at [Jayetheus/axiom](https://github.com/jayetheus/axiom).
 
-## 📄 License
+## License
 
-This project is [MIT](https://opensource.org/licenses/MIT) licensed. Built with ⚡️ by [Jayetheus](https://www.google.com/search?q=https://github.com/jayetheus).
+MIT. Built by [Jayetheus](https://github.com/jayetheus).
