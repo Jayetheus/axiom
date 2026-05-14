@@ -1,10 +1,15 @@
-/** * Defines how the request should be treated when the queue flushes.
- * Urgent requests bypass the background queue entirely if the network is active.
- */
+/** Defines how the request should be treated when the queue flushes. */
 export type RequestPriority = "urgent" | "background";
 
-/** * Represents a serialized HTTP request frozen in offline storage.
- */
+/** Events emitted by the Axiom engine. */
+export type AxiomEvent =
+  | "syncStart"
+  | "syncSuccess"
+  | "syncFailure"
+  | "deadLetter"
+  | "requestCancelled";
+
+/** Represents a serialized HTTP request frozen in offline storage. */
 export interface QueuedRequest<TBody = any, TMeta = Record<string, any>> {
   id: string;
   timestamp: number;
@@ -14,6 +19,11 @@ export interface QueuedRequest<TBody = any, TMeta = Record<string, any>> {
   body?: TBody;
   priority: RequestPriority;
   retryCount: number;
+  timeoutMs?: number;
+  idempotencyKey?: string;
+  dedupeKey?: string;
+  nextRetryAt?: number;
+  lastError?: string;
   /** Custom metadata attached by the developer for UI or analytics context */
   metadata?: TMeta;
 }
@@ -30,11 +40,17 @@ export interface AxiomConfig {
   maxRetries?: number;
   /** Global timeout in milliseconds before a request is aborted and queued. */
   timeout?: number;
+  /** Whether GET requests should be queued when offline. Disabled by default to avoid replaying stale reads. */
+  queueReads?: boolean;
 
-  /** * The name of the HTTP header used to carry the idempotency key.
+  /** The name of the HTTP header used to carry the idempotency key.
    * @default 'Idempotency-Key'
    */
   idempotencyHeaderName?: string;
+  /** Automatically inject an idempotency key for mutation requests when one is not provided.
+   * @default true
+   */
+  autoIdempotency?: boolean;
 
   /**
    * Optional global generator for idempotency keys.
@@ -54,6 +70,22 @@ export interface AxiomConfig {
    * @default false
    */
   warnOnMissingIdempotency?: boolean;
+  /** Base delay in milliseconds used for exponential retry backoff.
+   * @default 1000
+   */
+  retryBaseDelayMs?: number;
+  /** Maximum retry delay in milliseconds.
+   * @default 30000
+   */
+  retryMaxDelayMs?: number;
+  /** Random jitter ratio added to retry delays to avoid reconnect stampedes.
+   * @default 0.2
+   */
+  retryJitter?: number;
+  /** Maximum number of eligible requests processed during a single flush.
+   * @default 10
+   */
+  syncBatchSize?: number;
 
   /** If true, Axiom will log verbose trace details to the console to aid in debugging. */
   debug?: boolean;
@@ -122,4 +154,43 @@ export interface AxiomRequestOptions<TMeta = Record<string, any>> {
   idempotencyKey?: string;
   /** Inject custom metadata that will survive serialization and persist in the queue */
   metadata?: TMeta;
+}
+
+/** Payload emitted for successful background syncs. */
+export interface SyncSuccessEvent {
+  request: QueuedRequest;
+  response: any;
+}
+
+/** Payload emitted for failed background syncs that were not dead-lettered yet. */
+export interface SyncFailureEvent {
+  request: QueuedRequest;
+  status: number | null;
+  error: Error;
+  willRetry: boolean;
+  nextRetryAt?: number;
+}
+
+/** Storage adapter contract used by the queue engine. */
+export interface AxiomStorageAdapter {
+  /** Saves a request to the persistent queue */
+  save(request: QueuedRequest): Promise<void>;
+
+  /** Retrieves all pending requests, usually ordered by timestamp */
+  getAll(): Promise<QueuedRequest[]>;
+
+  /** Removes a specific request after it successfully syncs */
+  remove(id: string): Promise<void>;
+
+  /** Wipes the queue entirely (useful for user logout) */
+  clearAll(): Promise<void>;
+
+  /** Persists a dead-lettered request for later inspection. */
+  saveDeadLetter?(request: QueuedRequest): Promise<void>;
+
+  /** Retrieves all persisted dead letters. */
+  getDeadLetters?(): Promise<QueuedRequest[]>;
+
+  /** Clears all persisted dead letters. */
+  clearDeadLetters?(): Promise<void>;
 }
