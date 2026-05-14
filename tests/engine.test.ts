@@ -137,4 +137,37 @@ describe("AxiomEngine Core", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
     expect(await mockStorage.getAll()).toHaveLength(0);
   });
+
+  it("schedules retries for freshly queued 5xx responses", async () => {
+    vi.useFakeTimers();
+
+    const now = new Date("2026-05-14T10:00:00.000Z");
+    vi.setSystemTime(now);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ recovered: true }),
+      } as Response);
+
+    engine.create({ retryBaseDelayMs: 1000, retryJitter: 0 }, mockStorage);
+
+    const response = await engine.post("/recover", { foo: "bar" });
+    expect(response.isQueued).toBe(true);
+
+    const pending = await mockStorage.getAll();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].retryCount).toBe(1);
+    expect(pending[0].nextRetryAt).toBe(now.getTime() + 1000);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(await mockStorage.getAll()).toHaveLength(0);
+  });
 });

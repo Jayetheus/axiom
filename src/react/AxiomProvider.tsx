@@ -69,6 +69,10 @@ export const AxiomProvider: React.FC<AxiomProviderProps> = ({
   useEffect(() => {
     axiom.create(enhancedConfig, storageAdapter);
     void refreshDeadLetters();
+
+    return () => {
+      axiom.shutdown();
+    };
   }, [fallbackAdapter, storageAdapter, refreshDeadLetters]);
 
   useEffect(() => {

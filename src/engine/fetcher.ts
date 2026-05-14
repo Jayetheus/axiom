@@ -126,6 +126,12 @@ export class AxiomEngine {
     this.clearScheduledSync();
   }
 
+  /** Stops any scheduled background work owned by this engine instance. */
+  public shutdown(): void {
+    this.clearScheduledSync();
+    this.isOnline = false;
+  }
+
   /** Manually triggers the background sync manager to flush pending queued requests. */
   public async forceSync(): Promise<void> {
     if (!this.syncManager) {
@@ -391,7 +397,9 @@ export class AxiomEngine {
       if (response.status >= 500 && shouldQueue) {
         await this.enqueueRequest({
           ...request,
+          retryCount: request.retryCount + 1,
           lastError: `HTTP ${response.status}`,
+          nextRetryAt: this.calculateNextRetryAt(request.retryCount + 1),
         });
         return { status: 202, isQueued: true };
       }
@@ -417,11 +425,25 @@ export class AxiomEngine {
 
       await this.enqueueRequest({
         ...request,
+        retryCount: request.retryCount + 1,
         lastError: error instanceof Error ? error.message : "Network failure",
+        nextRetryAt: this.calculateNextRetryAt(request.retryCount + 1),
       });
 
       return { status: 202, isQueued: true };
     }
+  }
+
+  private calculateNextRetryAt(retryCount: number): number {
+    const baseDelay = this.config.retryBaseDelayMs ?? 1000;
+    const maxDelay = this.config.retryMaxDelayMs ?? 30000;
+    const jitterRatio = this.config.retryJitter ?? 0.2;
+    const exponentialDelay = Math.min(
+      maxDelay,
+      baseDelay * 2 ** Math.max(retryCount - 1, 0),
+    );
+    const jitter = Math.round(exponentialDelay * jitterRatio * Math.random());
+    return Date.now() + exponentialDelay + jitter;
   }
 
   private async enqueueRequest(request: QueuedRequest): Promise<void> {
