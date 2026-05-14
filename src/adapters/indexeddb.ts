@@ -1,10 +1,10 @@
-import { AxiomStorageAdapter } from "./index";
-import { QueuedRequest } from "../types";
+import type { AxiomStorageAdapter, QueuedRequest } from "../types";
 
 export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
   private dbName = "AxiomOfflineDB";
   private storeName = "requests";
-  private version = 1;
+  private deadLetterStoreName = "deadLetters";
+  private version = 2;
 
   private async getDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -14,6 +14,9 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(this.storeName)) {
           db.createObjectStore(this.storeName, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(this.deadLetterStoreName)) {
+          db.createObjectStore(this.deadLetterStoreName, { keyPath: "id" });
         }
       };
 
@@ -64,6 +67,43 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readwrite");
       const store = transaction.objectStore(this.storeName);
+      store.clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  async saveDeadLetter(request: QueuedRequest): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.deadLetterStoreName, "readwrite");
+      const store = transaction.objectStore(this.deadLetterStoreName);
+      store.put(request);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  async getDeadLetters(): Promise<QueuedRequest[]> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.deadLetterStoreName, "readonly");
+      const store = transaction.objectStore(this.deadLetterStoreName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const results = request.result as QueuedRequest[];
+        resolve(results.sort((a, b) => a.timestamp - b.timestamp));
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clearDeadLetters(): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.deadLetterStoreName, "readwrite");
+      const store = transaction.objectStore(this.deadLetterStoreName);
       store.clear();
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
