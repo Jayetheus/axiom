@@ -26,7 +26,7 @@ Important: Axiom provides **at-least-once delivery**, not exactly-once execution
 
 - Persistent queue storage with `IndexedDB`, `localStorage`, or a custom adapter.
 - Automatic idempotency-key injection for `POST`, `PUT`, `PATCH`, and `DELETE`.
-- Queue deduplication for matching idempotency or payload fingerprints.
+- Queue deduplication for repeated explicit idempotency keys, and for payload fingerprints when auto-idempotency is disabled.
 - Exponential retry backoff with jitter and dead-letter persistence.
 - Batched replay to avoid reconnect storms on weak connections.
 - React helpers for queue inspection, dead letters, and manual sync.
@@ -197,13 +197,14 @@ await axiom.post("/orders", { sku: "book-1" });
 import { axiom, useAxiomQueue } from "@jayethian/axiom";
 
 export function CheckoutButton() {
-  const { isOnline, deadLetters, refreshDeadLetters } = useAxiomQueue();
+  const { isOnline, inspectQueue, deadLetters } = useAxiomQueue();
 
   const submit = async () => {
     const result = await axiom.post("/checkout", { sku: "book-1" });
     if (result.isQueued) {
       console.log("Queued for background replay");
-      await refreshDeadLetters();
+      const pending = await inspectQueue();
+      console.log("Pending requests", pending.length);
     }
   };
 
@@ -219,6 +220,7 @@ export function CheckoutButton() {
 
 - Mutations are queued by default. `GET` requests are not queued unless `queueReads: true` is enabled.
 - Replay is sequential and batched. Axiom stops the current flush after the first transient failure and schedules exponential backoff with jitter.
+- Repeated mutations only dedupe automatically when you reuse the same explicit `idempotencyKey`. The generated fallback keys are unique on purpose.
 - Dead letters are persisted when the adapter supports `saveDeadLetter`, `getDeadLetters`, and `clearDeadLetters`.
 - `onBeforeSync` should only mutate headers or metadata. Do not change the queued request `id`.
 
