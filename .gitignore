@@ -19,3 +19,6 @@ build
 .pnp.*
 
 ./vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
