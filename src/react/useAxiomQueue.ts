@@ -8,6 +8,7 @@ export function useAxiomQueue() {
     clearDeadLetters,
     inspectQueue,
     cancelRequest,
+    refreshDeadLetters,
   } = useAxiomContext();
 
   return {
@@ -23,5 +24,7 @@ export function useAxiomQueue() {
     inspectQueue,
     /** Cancels and removes a specific request from the pending queue */
     cancelRequest,
+    /** Reloads dead letters from persistent storage */
+    refreshDeadLetters,
   };
 }
