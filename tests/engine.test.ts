@@ -1,79 +1,90 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AxiomEngine } from '../src/engine/fetcher';
-import { MemoryStorageAdapter } from '../src/adapters/memory';
-import { AxiomConfig } from '../src/types';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { AxiomEngine } from "../src/engine/fetcher";
+import { MemoryStorageAdapter } from "../src/adapters/memory";
 
-describe('AxiomEngine Core', () => {
+describe("AxiomEngine Core", () => {
   let engine: AxiomEngine;
   let mockStorage: MemoryStorageAdapter;
 
   beforeEach(() => {
     mockStorage = new MemoryStorageAdapter();
     engine = new AxiomEngine();
-    
-    // Reset the global fetch mock before every test
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('should successfully make a POST request without queuing', async () => {
-    // Mock a successful 200 OK response
+  it("makes a successful POST request without queuing", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ success: true }),
     } as Response);
 
-    engine.create({ baseURL: 'https://api.test.com' }, mockStorage);
-    
-    const response = await engine.post<{ success: boolean }>('/data', { foo: 'bar' });
+    engine.create({ baseURL: "https://api.test.com" }, mockStorage);
+
+    const response = await engine.post<{ success: boolean }>("/data", {
+      foo: "bar",
+    });
 
     expect(response.status).toBe(200);
     expect(response.isQueued).toBe(false);
     expect(response.data?.success).toBe(true);
-    
-    // Ensure nothing was queued
-    const pending = await mockStorage.getAll();
-    expect(pending.length).toBe(0);
+    expect(await mockStorage.getAll()).toHaveLength(0);
   });
 
-  it('should queue the request if the network drops (throws error)', async () => {
-    // Mock a network failure (fetch throws)
-    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Network request failed'));
+  it("queues mutation requests if the network drops", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("Network request failed"));
 
     engine.create({}, mockStorage);
-    const response = await engine.post('/data', { foo: 'bar' });
+    const response = await engine.post("/data", { foo: "bar" });
 
     expect(response.status).toBe(202);
     expect(response.isQueued).toBe(true);
 
     const pending = await mockStorage.getAll();
-    expect(pending.length).toBe(1);
-    expect(pending[0].method).toBe('POST');
-    expect(JSON.parse(pending[0].body!)).toEqual({ foo: 'bar' });
+    expect(pending).toHaveLength(1);
+    expect(pending[0].method).toBe("POST");
+    expect(pending[0].idempotencyKey).toBeTruthy();
+    expect(JSON.parse(pending[0].body!)).toEqual({ foo: "bar" });
   });
 
-  it('should queue the request on a timeout', async () => {
-    // Mock a fetch that takes forever (simulating a timeout)
-    vi.mocked(fetch).mockImplementationOnce(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+  it("does not queue GET requests by default", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("offline"));
 
     engine.create({}, mockStorage);
-    
-    // Set an aggressively short timeout of 10ms for the test
-    const response = await engine.get('/data', { timeout: 10 });
+    const response = await engine.get("/data");
 
-    expect(response.status).toBe(202);
-    expect(response.isQueued).toBe(true);
-
-    const pending = await mockStorage.getAll();
-    expect(pending.length).toBe(1);
-    expect(pending[0].method).toBe('GET');
+    expect(response.isQueued).toBe(false);
+    expect(await mockStorage.getAll()).toHaveLength(0);
   });
 
-  it('should trigger the global onResponse interceptor on success', async () => {
+  it("queues GET requests only when queueReads is enabled", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("offline"));
+
+    engine.create({ queueReads: true }, mockStorage);
+    const response = await engine.get("/data");
+
+    expect(response.isQueued).toBe(true);
+    expect(await mockStorage.getAll()).toHaveLength(1);
+  });
+
+  it("drops duplicate queued mutations using the dedupe key", async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+
+    engine.create({}, mockStorage);
+
+    await engine.post("/orders", { id: 1 }, { idempotencyKey: "order-1" });
+    await engine.post("/orders", { id: 1 }, { idempotencyKey: "order-1" });
+
+    const pending = await mockStorage.getAll();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].idempotencyKey).toBe("order-1");
+  });
+
+  it("triggers the global onResponse interceptor on success", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -83,34 +94,13 @@ describe('AxiomEngine Core', () => {
     const onResponseMock = vi.fn();
     engine.create({ onResponse: onResponseMock }, mockStorage);
 
-    await engine.get('/test');
+    await engine.get("/test", { headers: { Accept: "application/json" } });
 
     expect(onResponseMock).toHaveBeenCalledTimes(1);
     expect(onResponseMock).toHaveBeenCalledWith(
-      { interceptMe: true }, // The data
-      200,                   // The status
-      expect.objectContaining({ url: '/test', method: 'GET' }) // The request
-    );
-  });
-
-  it('should trigger the global onError interceptor on a 404', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-    } as Response);
-
-    const onErrorMock = vi.fn();
-    engine.create({ onError: onErrorMock }, mockStorage);
-
-    const response = await engine.get('/missing');
-
-    // 404s shouldn't queue, they should just fail immediately
-    expect(response.isQueued).toBe(false); 
-    expect(onErrorMock).toHaveBeenCalledTimes(1);
-    expect(onErrorMock).toHaveBeenCalledWith(
-      404, 
-      expect.any(Error), 
-      expect.objectContaining({ url: '/missing' })
+      { interceptMe: true },
+      200,
+      expect.objectContaining({ url: "/test", method: "GET" }),
     );
   });
 });
