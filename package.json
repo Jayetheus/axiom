@@ -1,17 +1,22 @@
 {
   "name": "@jayethian/axiom",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "maintainers": [
     "Jayetheus"
   ],
-  "description": "A resilient, offline-first fetch wrapper for React Native & Next.js.",
+  "description": "Offline-first fetch with persistent queueing, backoff, idempotency, and React helpers.",
   "keywords": [
+    "react",
     "react-native",
     "nextjs",
+    "typescript",
     "fetch",
-    "axios",
     "offline-first",
+    "offline",
     "sync",
+    "retry",
+    "backoff",
+    "idempotency",
     "network",
     "queue",
     "indexeddb"
@@ -27,15 +32,27 @@
   "publishConfig": {
     "access": "public"
   },
+  "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE*"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
