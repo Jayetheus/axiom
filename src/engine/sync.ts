@@ -27,8 +27,6 @@ export class SyncManager {
 
       console.log(`[Axiom] Network restored. Syncing ${pending.length} queued requests...`);
 
-      // MITIGATION 3: Priority Lanes (Urgent requests jump the line)
-      // If priorities match, it falls back to timestamp (FIFO) to maintain action order.
       const sortedQueue = pending.sort((a, b) => {
         if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
         if (a.priority !== 'urgent' && b.priority === 'urgent') return 1;
@@ -50,7 +48,6 @@ export class SyncManager {
   private async processRequest(request: QueuedRequest): Promise<void> {
     let reqToSync = request;
 
-    // MITIGATION 1: Just-in-Time Headers
     if (this.config.onBeforeSync) {
       try {
         reqToSync = await this.config.onBeforeSync(request);
@@ -85,16 +82,15 @@ export class SyncManager {
 
         await this.storage.remove(reqToSync.id);
         this.engine.log("info", `Request ${reqToSync.id} synced successfully.`);
+        this.engine.emit('syncSuccess', { request: reqToSync, response: responseData });
       
       } else if (response.status >= 400 && response.status < 500) {
-        // INTERCEPTOR: Client Error (Background Sync) - Bad data, remove from queue
         if (this.config.onError) {
           await this.config.onError(response.status, new Error(`Client Error: ${response.status}`), reqToSync);
         }
         await this.storage.remove(reqToSync.id);
-      
+        this.engine.emit('syncFailure', { request: reqToSync, status: response.status });
       } else {
-        // INTERCEPTOR: Server Error (Background Sync) - Keep in queue and retry later
         if (this.config.onError) {
           await this.config.onError(response.status, new Error(`Server Error: ${response.status}`), reqToSync);
         }
@@ -104,7 +100,6 @@ export class SyncManager {
     } catch (error: any) {
       clearTimeout(timeoutId);
       
-      // INTERCEPTOR: Network Drop / Timeout (Background Sync)
       if (this.config.onError) {
         await this.config.onError(null, error, reqToSync);
       }
@@ -125,8 +120,10 @@ export class SyncManager {
       await this.storage.remove(request.id);
       
       if (this.config.onDeadLetter) {
-        this.config.onDeadLetter(request, new Error('Max retries exceeded'));
+        await this.config.onDeadLetter(request, new Error('Max retries exceeded'));
       }
+
+      this.engine.emit('deadLetter', request);
     } else {
       await this.storage.save(request);
     }
