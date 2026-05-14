@@ -1,7 +1,14 @@
-import { useAxiomContext } from './AxiomProvider';
+import { useAxiomContext } from "./AxiomProvider";
 
 export function useAxiomQueue() {
-  const { isOnline, forceSync, deadLetters, clearDeadLetters, inspectQueue, cancelRequest } = useAxiomContext();
+  const {
+    isOnline,
+    forceSync,
+    deadLetters,
+    clearDeadLetters,
+    inspectQueue,
+    cancelRequest,
+  } = useAxiomContext();
 
   return {
     /** Boolean indicating if the device currently has an active connection */
@@ -15,6 +22,6 @@ export function useAxiomQueue() {
     /** Retrieves the current pending queue directly from storage */
     inspectQueue,
     /** Cancels and removes a specific request from the pending queue */
-    cancelRequest
+    cancelRequest,
   };
 }

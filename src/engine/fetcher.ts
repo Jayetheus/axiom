@@ -1,29 +1,39 @@
-import { AxiomConfig, AxiomRequestOptions, QueuedRequest, RequestPriority } from '../types';
-import { AxiomStorageAdapter } from '../adapters';
-import { MemoryStorageAdapter } from '../adapters/memory';
-import { SyncManager } from './sync';
-import { resolveStorageAdapter } from '../adapters/resolver';
+import {
+  AxiomConfig,
+  AxiomRequestOptions,
+  QueuedRequest,
+  RequestPriority,
+} from "../types";
+import { AxiomStorageAdapter } from "../adapters";
+import { MemoryStorageAdapter } from "../adapters/memory";
+import { SyncManager } from "./sync";
+import { resolveStorageAdapter } from "../adapters/resolver";
 
-type AxiomEvent = 'syncStart' | 'syncSuccess' | 'syncError' | 'deadLetter' | 'requestCancelled';
+type AxiomEvent =
+  | "syncStart"
+  | "syncSuccess"
+  | "syncError"
+  | "deadLetter"
+  | "requestCancelled";
 type AxiomEventListener = (...args: any[]) => void;
 
 export class AxiomEngine {
   private config: AxiomConfig = {};
-  private storage: AxiomStorageAdapter = new MemoryStorageAdapter(); 
+  private storage: AxiomStorageAdapter = new MemoryStorageAdapter();
   private syncManager!: SyncManager;
   private listeners: Map<AxiomEvent, Set<AxiomEventListener>> = new Map();
 
   /** Internal verbose logger */
   public log(...args: any[]): void {
     if (this.config.debug) {
-      if(args[0] === 'error') {
-        console.error('🛑 [Axiom Error]', ...args);
-      } else if(args[0] === 'warn') {
-        console.warn('⚠️ [Axiom Warn]', ...args);
-      } else if(args[0] === 'info') {
-        console.info('ℹ️ [Axiom Info]', ...args);
+      if (args[0] === "error") {
+        console.error("🛑 [Axiom Error]", ...args);
+      } else if (args[0] === "warn") {
+        console.warn("⚠️ [Axiom Warn]", ...args);
+      } else if (args[0] === "info") {
+        console.info("ℹ️ [Axiom Info]", ...args);
       } else {
-        console.log('🐛 [Axiom Debug]', ...args);
+        console.log("🐛 [Axiom Debug]", ...args);
       }
     }
   }
@@ -43,7 +53,7 @@ export class AxiomEngine {
 
   /** Internal method to emit events to registered listeners. */
   public emit(event: AxiomEvent, ...args: any[]): void {
-    this.listeners.get(event)?.forEach(listener => listener(...args));
+    this.listeners.get(event)?.forEach((listener) => listener(...args));
   }
 
   /**
@@ -52,16 +62,20 @@ export class AxiomEngine {
    * * @param config - Global configuration (baseURL, timeouts, custom headers, etc.)
    * @param storageAdapter - Optional custom adapter (e.g., MMKV). Defaults to in-memory storage.
    */
-public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
+  public create(
+    config: AxiomConfig,
+    storageAdapter?: AxiomStorageAdapter,
+  ): void {
     this.config = config;
-    
-    if (this.config.debug) this.log("info","Engine initializing with config:", config);
+
+    if (this.config.debug)
+      this.log("info", "Engine initializing with config:", config);
 
     if (storageAdapter) {
       this.storage = storageAdapter;
-      this.log("info","Custom storage adapter injected manually.");
+      this.log("info", "Custom storage adapter injected manually.");
     } else {
-      const fallback = config.fallbackAdapter || 'memory';
+      const fallback = config.fallbackAdapter || "memory";
       this.storage = resolveStorageAdapter(fallback, !!config.debug);
     }
 
@@ -74,7 +88,10 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    */
   public async forceSync(): Promise<void> {
     if (!this.syncManager) {
-      this.log("error","[Axiom] Engine not initialized. Call axiom.create() first.");
+      this.log(
+        "error",
+        "[Axiom] Engine not initialized. Call axiom.create() first.",
+      );
       return;
     }
     await this.syncManager.flushQueue();
@@ -100,33 +117,38 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    */
   public async cancelRequest(id: string): Promise<void> {
     if (!this.storage) {
-      this.log("warn", "[Axiom] Engine not initialized. Cannot cancel request.");
+      this.log(
+        "warn",
+        "[Axiom] Engine not initialized. Cannot cancel request.",
+      );
       return;
     }
     await this.storage.remove(id);
     this.log("info", `[Axiom] Cancelled queued request ${id}`);
-    this.emit('requestCancelled', id); 
+    this.emit("requestCancelled", id);
   }
 
   /**
    * Generates a unique collision-resistant ID for queued requests.
    */
   private generateId(): string {
-    return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    return (
+      Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
+    );
   }
 
   /**
-   * Executes an HTTP GET request. 
+   * Executes an HTTP GET request.
    * If the network is unavailable or times out, the request is safely queued.
    * * @param url - The endpoint URL (appended to baseURL if configured).
    * @param options - Request-specific options (priority lanes, timeout overrides).
    * @returns A promise resolving to the response data, status code, and queue state.
    */
   public async get<T>(
-    url: string, 
-    options?: AxiomRequestOptions
+    url: string,
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
-    return this.prepareRequest<T>('GET', url, undefined, options);
+    return this.prepareRequest<T>("GET", url, undefined, options);
   }
 
   /**
@@ -137,11 +159,11 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    * @param options - Request-specific options.
    */
   public async post<T>(
-    url: string, 
-    data?: any, 
-    options?: AxiomRequestOptions
+    url: string,
+    data?: any,
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
-    return this.prepareRequest<T>('POST', url, data, options);
+    return this.prepareRequest<T>("POST", url, data, options);
   }
 
   /**
@@ -151,11 +173,11 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    * @param options - Request-specific options.
    */
   public async put<T>(
-    url: string, 
-    data?: any, 
-    options?: AxiomRequestOptions
+    url: string,
+    data?: any,
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
-    return this.prepareRequest<T>('PUT', url, data, options);
+    return this.prepareRequest<T>("PUT", url, data, options);
   }
 
   /**
@@ -165,11 +187,11 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    * @param options - Request-specific options.
    */
   public async patch<T>(
-    url: string, 
-    data?: any, 
-    options?: AxiomRequestOptions
+    url: string,
+    data?: any,
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
-    return this.prepareRequest<T>('PATCH', url, data, options);
+    return this.prepareRequest<T>("PATCH", url, data, options);
   }
 
   /**
@@ -178,30 +200,32 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
    * @param options - Request-specific options.
    */
   public async delete<T>(
-    url: string, 
-    options?: AxiomRequestOptions
+    url: string,
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
-    return this.prepareRequest<T>('DELETE', url, undefined, options);
+    return this.prepareRequest<T>("DELETE", url, undefined, options);
   }
 
   /**
    * Internal helper to consolidate request preparation and keep the engine DRY.
    */
   private async prepareRequest<T>(
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
     url: string,
     data?: any,
-    options?: AxiomRequestOptions
+    options?: AxiomRequestOptions,
   ): Promise<{ data?: T; status: number; isQueued: boolean }> {
     const fullUrl = this.config.baseURL ? `${this.config.baseURL}${url}` : url;
-    
-    const headers: Record<string, string> = { ...(this.config.defaultHeaders || {}) };
+
+    const headers: Record<string, string> = {
+      ...(this.config.defaultHeaders || {}),
+    };
     if (options?.headers) Object.assign(headers, options.headers);
-    if (data) headers['Content-Type'] = 'application/json';
+    if (data) headers["Content-Type"] = "application/json";
 
-    const isMutation = ['POST', 'PUT', 'PATCH'].includes(method);
+    const isMutation = ["POST", "PUT", "PATCH"].includes(method);
 
-    if (isMutation){
+    if (isMutation) {
       let idempotencyKey = options?.idempotencyKey;
 
       if (!idempotencyKey && this.config.generateIdempotencyKey && isMutation) {
@@ -210,18 +234,22 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
           method,
           headers,
           body: data ? JSON.stringify(data) : undefined,
-          metadata: options?.metadata
+          metadata: options?.metadata,
         });
       }
-      
-        if (idempotencyKey) {
-          const headerName = this.config.idempotencyHeaderName || 'Idempotency-Key';
-          headers[headerName] = idempotencyKey;
-        } else if (this.config.warnOnMissingIdempotency) {
-          this.log("warn", `Missing Idempotency-Key for ${method} request to ${url}. This may result in duplicate actions on your backend if a background sync is interrupted.`);
-        }
+
+      if (idempotencyKey) {
+        const headerName =
+          this.config.idempotencyHeaderName || "Idempotency-Key";
+        headers[headerName] = idempotencyKey;
+      } else if (this.config.warnOnMissingIdempotency) {
+        this.log(
+          "warn",
+          `Missing Idempotency-Key for ${method} request to ${url}. This may result in duplicate actions on your backend if a background sync is interrupted.`,
+        );
+      }
     }
-    
+
     const request: QueuedRequest = {
       id: this.generateId(),
       timestamp: Date.now(),
@@ -229,75 +257,87 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
       method,
       headers,
       body: data ? JSON.stringify(data) : undefined,
-      priority: options?.priority || 'urgent',
+      priority: options?.priority || "urgent",
       retryCount: 0,
-      metadata: options?.metadata 
+      metadata: options?.metadata,
     };
 
     const timeoutMs = options?.timeout || this.config.timeout || 8000;
     return this.attemptFetch<T>(request, timeoutMs);
   }
 
- /**
+  /**
    * Internal logic to fire the request or catch the network drop.
    * Handles timeout cancellations and triggers Global Interceptors.
    */
-  private async attemptFetch<T>(request: QueuedRequest, timeoutMs: number): Promise<{ data?: T; status: number; isQueued: boolean }> {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  private async attemptFetch<T>(
+    request: QueuedRequest,
+    timeoutMs: number,
+  ): Promise<{ data?: T; status: number; isQueued: boolean }> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(request.url, {
         method: request.method,
         headers: request.headers,
         body: request.body,
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       if (response.ok) {
         const responseData = await response.json().catch(() => null);
-        
+
         if (this.config.onResponse) {
           await this.config.onResponse(responseData, response.status, request);
         }
-        
+
         return { data: responseData, status: response.status, isQueued: false };
       }
 
       if (response.status >= 400 && response.status < 500) {
         if (this.config.onError) {
-          await this.config.onError(response.status, new Error(`Client Error: ${response.status}`), request);
+          await this.config.onError(
+            response.status,
+            new Error(`Client Error: ${response.status}`),
+            request,
+          );
         }
         return { status: response.status, isQueued: false };
       }
 
       if (response.status >= 500) {
         if (this.config.onError) {
-          await this.config.onError(response.status, new Error(`Server Error: ${response.status}`), request);
+          await this.config.onError(
+            response.status,
+            new Error(`Server Error: ${response.status}`),
+            request,
+          );
         }
         await this.enqueueRequest(request);
         return { status: 202, isQueued: true };
       }
 
       return { status: response.status, isQueued: false };
-
     } catch (error: any) {
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-        if(error.name === 'AbortError') {
-          console.warn(`[Axiom] Request to ${request.url} timed out after ${timeoutMs}ms. Queuing for retry.`);
-        }
-        
-        // 4. NETWORK DROP / TIMEOUT: Status is null because it never reached the server
-        if (this.config.onError) {
-          await this.config.onError(null, error, request);
-        }
-        
-        await this.enqueueRequest(request);
+      if (error.name === "AbortError") {
+        console.warn(
+          `[Axiom] Request to ${request.url} timed out after ${timeoutMs}ms. Queuing for retry.`,
+        );
+      }
 
-        return { status: 202, isQueued: true };
+      // 4. NETWORK DROP / TIMEOUT: Status is null because it never reached the server
+      if (this.config.onError) {
+        await this.config.onError(null, error, request);
+      }
+
+      await this.enqueueRequest(request);
+
+      return { status: 202, isQueued: true };
     }
   }
 

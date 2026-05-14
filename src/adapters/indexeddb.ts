@@ -1,9 +1,9 @@
-import { AxiomStorageAdapter } from './index';
-import { QueuedRequest } from '../types';
+import { AxiomStorageAdapter } from "./index";
+import { QueuedRequest } from "../types";
 
 export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
-  private dbName = 'AxiomOfflineDB';
-  private storeName = 'requests';
+  private dbName = "AxiomOfflineDB";
+  private storeName = "requests";
   private version = 1;
 
   private async getDB(): Promise<IDBDatabase> {
@@ -13,7 +13,7 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName, { keyPath: 'id' });
+          db.createObjectStore(this.storeName, { keyPath: "id" });
         }
       };
 
@@ -25,7 +25,7 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
   async save(request: QueuedRequest): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(this.storeName, 'readwrite');
+      const transaction = db.transaction(this.storeName, "readwrite");
       const store = transaction.objectStore(this.storeName);
       store.put(request);
       transaction.oncomplete = () => resolve();
@@ -36,10 +36,10 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
   async getAll(): Promise<QueuedRequest[]> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(this.storeName, 'readonly');
+      const transaction = db.transaction(this.storeName, "readonly");
       const store = transaction.objectStore(this.storeName);
       const request = store.getAll();
-      
+
       request.onsuccess = () => {
         const results = request.result as QueuedRequest[];
         resolve(results.sort((a, b) => a.timestamp - b.timestamp));
@@ -51,7 +51,7 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
   async remove(id: string): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(this.storeName, 'readwrite');
+      const transaction = db.transaction(this.storeName, "readwrite");
       const store = transaction.objectStore(this.storeName);
       store.delete(id);
       transaction.oncomplete = () => resolve();
@@ -62,7 +62,7 @@ export class IndexedDBStorageAdapter implements AxiomStorageAdapter {
   async clearAll(): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(this.storeName, 'readwrite');
+      const transaction = db.transaction(this.storeName, "readwrite");
       const store = transaction.objectStore(this.storeName);
       store.clear();
       transaction.oncomplete = () => resolve();

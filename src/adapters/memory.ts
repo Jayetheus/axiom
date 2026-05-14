@@ -1,5 +1,5 @@
-import { AxiomStorageAdapter } from './index';
-import { QueuedRequest } from '../types';
+import { AxiomStorageAdapter } from "./index";
+import { QueuedRequest } from "../types";
 
 export class MemoryStorageAdapter implements AxiomStorageAdapter {
   private queue: Map<string, QueuedRequest> = new Map();
@@ -9,7 +9,9 @@ export class MemoryStorageAdapter implements AxiomStorageAdapter {
   }
 
   async getAll(): Promise<QueuedRequest[]> {
-    return Array.from(this.queue.values()).sort((a, b) => a.timestamp - b.timestamp);
+    return Array.from(this.queue.values()).sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
   }
 
   async remove(id: string): Promise<void> {
