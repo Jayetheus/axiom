@@ -13,6 +13,7 @@ describe("AxiomEngine Core", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -102,5 +103,38 @@ describe("AxiomEngine Core", () => {
       200,
       expect.objectContaining({ url: "/test", method: "GET" }),
     );
+  });
+
+  it("automatically retries queued requests when the backoff window expires", async () => {
+    vi.useFakeTimers();
+
+    const now = new Date("2026-05-14T10:00:00.000Z");
+    vi.setSystemTime(now);
+
+    await mockStorage.save({
+      id: "retry-me",
+      timestamp: now.getTime(),
+      url: "/retry-me",
+      method: "POST",
+      headers: {},
+      body: JSON.stringify({ ok: true }),
+      priority: "urgent",
+      retryCount: 1,
+      nextRetryAt: now.getTime() + 1_000,
+      timeoutMs: 5_000,
+    });
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ synced: true }),
+    } as Response);
+
+    engine.create({}, mockStorage);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(await mockStorage.getAll()).toHaveLength(0);
   });
 });

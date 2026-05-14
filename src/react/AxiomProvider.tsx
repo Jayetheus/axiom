@@ -80,9 +80,7 @@ export const AxiomProvider: React.FC<AxiomProviderProps> = ({
 
     const handleNetworkChange = (status: boolean) => {
       setIsOnline(status);
-      if (status) {
-        void axiom.forceSync();
-      }
+      axiom.setOnlineStatus(status);
     };
 
     if (networkListener) {
@@ -99,7 +97,7 @@ export const AxiomProvider: React.FC<AxiomProviderProps> = ({
 
       window.addEventListener("online", goOnline);
       window.addEventListener("offline", goOffline);
-      setIsOnline(window.navigator.onLine);
+      handleNetworkChange(window.navigator.onLine);
 
       cleanup = () => {
         window.removeEventListener("online", goOnline);

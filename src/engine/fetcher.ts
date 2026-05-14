@@ -29,6 +29,8 @@ export class AxiomEngine {
   private syncManager?: SyncManager;
   private listeners: Map<AxiomEvent, Set<(...args: any[]) => void>> = new Map();
   private resolvedAdapterPreference: AxiomConfig["fallbackAdapter"] = "memory";
+  private scheduledSyncTimer?: ReturnType<typeof setTimeout>;
+  private isOnline = true;
 
   /** Internal verbose logger */
   public log(...args: any[]): void {
@@ -77,6 +79,8 @@ export class AxiomEngine {
     config: AxiomConfig,
     storageAdapter?: AxiomStorageAdapter,
   ): void {
+    const previousStorage = this.storage;
+
     if (storageAdapter) {
       this.storage = storageAdapter;
       this.resolvedAdapterPreference = undefined;
@@ -91,12 +95,15 @@ export class AxiomEngine {
 
     this.config = config;
 
-    if (!this.syncManager || storageAdapter) {
+    const storageChanged = previousStorage !== this.storage;
+
+    if (!this.syncManager || storageChanged) {
       this.syncManager = new SyncManager(this.storage, this.config, this);
     } else {
       this.syncManager.updateConfig(this.config);
     }
 
+    void this.scheduleNextSyncFromQueue();
     this.log("info", "Engine initialized.");
   }
 
@@ -104,6 +111,19 @@ export class AxiomEngine {
   public updateConfig(config: AxiomConfig): void {
     this.config = config;
     this.syncManager?.updateConfig(config);
+    void this.scheduleNextSyncFromQueue();
+  }
+
+  /** Updates the engine's view of network availability. */
+  public setOnlineStatus(isOnline: boolean): void {
+    this.isOnline = isOnline;
+
+    if (isOnline) {
+      void this.forceSync();
+      return;
+    }
+
+    this.clearScheduledSync();
   }
 
   /** Manually triggers the background sync manager to flush pending queued requests. */
@@ -113,7 +133,13 @@ export class AxiomEngine {
       return;
     }
 
+    if (!this.isOnline) {
+      await this.scheduleNextSyncFromQueue();
+      return;
+    }
+
     await this.syncManager.flushQueue();
+    await this.scheduleNextSyncFromQueue();
   }
 
   /** Retrieves all currently queued requests from storage. */
@@ -136,16 +162,53 @@ export class AxiomEngine {
     await this.storage.remove(id);
     this.log("info", `Cancelled queued request ${id}`);
     this.emit("requestCancelled", id);
+    await this.scheduleNextSyncFromQueue();
+  }
+
+  private clearScheduledSync(): void {
+    if (this.scheduledSyncTimer) {
+      clearTimeout(this.scheduledSyncTimer);
+      this.scheduledSyncTimer = undefined;
+    }
+  }
+
+  private async scheduleNextSyncFromQueue(): Promise<void> {
+    this.clearScheduledSync();
+
+    const queue = await this.storage.getAll();
+    const now = Date.now();
+    const nextRetryAt = queue.reduce<number | undefined>((nearest, request) => {
+      if (!request.nextRetryAt || request.nextRetryAt <= now) {
+        return nearest;
+      }
+
+      if (nearest === undefined || request.nextRetryAt < nearest) {
+        return request.nextRetryAt;
+      }
+
+      return nearest;
+    }, undefined);
+
+    if (nextRetryAt === undefined || !this.isOnline) {
+      return;
+    }
+
+    const delay = Math.max(nextRetryAt - now, 0);
+    this.scheduledSyncTimer = setTimeout(() => {
+      this.scheduledSyncTimer = undefined;
+      void this.forceSync();
+    }, delay);
   }
 
   private generateId(): string {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
       return crypto.randomUUID();
     }
 
-    return (
-      Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
-    );
+    return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   }
 
   private hash(value: string): string {
@@ -380,6 +443,7 @@ export class AxiomEngine {
 
     this.log("warn", `Network unreachable. Queuing request ${request.id}`);
     await this.storage.save(request);
+    await this.scheduleNextSyncFromQueue();
   }
 }
 
