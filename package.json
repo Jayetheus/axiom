@@ -16,13 +16,13 @@
     "queue",
     "indexeddb"
   ],
-  "homepage": "https://github.com/jayethian/axiom#readme",
+  "homepage": "https://github.com/jayetheus/axiom#readme",
   "bugs": {
-    "url": "https://github.com/jayethian/axiom/issues"
+    "url": "https://github.com/jayetheus/axiom/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jayethian/axiom.git"
+    "url": "git+https://github.com/jayetheus/axiom.git"
   },
   "publishConfig": {
     "access": "public"
