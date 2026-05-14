@@ -17,3 +17,5 @@ build
 
 #!.yarn/cache
 .pnp.*
+
+./vscode/*
