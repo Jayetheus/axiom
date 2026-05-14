@@ -198,6 +198,29 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
     const headers: Record<string, string> = { ...(this.config.defaultHeaders || {}) };
     if (options?.headers) Object.assign(headers, options.headers);
     if (data) headers['Content-Type'] = 'application/json';
+
+    const isMutation = ['POST', 'PUT', 'PATCH'].includes(method);
+
+    if (isMutation){
+      let idempotencyKey = options?.idempotencyKey;
+
+      if (!idempotencyKey && this.config.generateIdempotencyKey && isMutation) {
+        idempotencyKey = this.config.generateIdempotencyKey({
+          url: fullUrl,
+          method,
+          headers,
+          body: data ? JSON.stringify(data) : undefined,
+          metadata: options?.metadata
+        });
+      }
+      
+        if (idempotencyKey) {
+          const headerName = this.config.idempotencyHeaderName || 'Idempotency-Key';
+          headers[headerName] = idempotencyKey;
+        } else if (this.config.warnOnMissingIdempotency) {
+          this.log("warn", `Missing Idempotency-Key for ${method} request to ${url}. This may result in duplicate actions on your backend if a background sync is interrupted.`);
+        }
+    }
     
     const request: QueuedRequest = {
       id: this.generateId(),
@@ -214,7 +237,6 @@ public create(config: AxiomConfig, storageAdapter?: AxiomStorageAdapter): void {
     const timeoutMs = options?.timeout || this.config.timeout || 8000;
     return this.attemptFetch<T>(request, timeoutMs);
   }
-
 
  /**
    * Internal logic to fire the request or catch the network drop.

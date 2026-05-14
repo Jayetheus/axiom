@@ -31,6 +31,25 @@ export interface AxiomConfig {
   /** Global timeout in milliseconds before a request is aborted and queued. */
   timeout?: number;
 
+  /** * The name of the HTTP header used to carry the idempotency key.
+   * @default 'Idempotency-Key'
+   */
+  idempotencyHeaderName?: string;
+
+  /** 
+   * Optional global generator for idempotency keys. 
+   * Called automatically for POST, PUT, and PATCH requests if no explicit key is provided at the call site.
+   * Useful if you want to automatically extract keys from request metadata or body payloads.
+   */
+  generateIdempotencyKey?: (request: Omit<QueuedRequest, 'id' | 'timestamp' | 'retryCount' | 'priority'>) => string | undefined;
+
+  /** 
+   * If true, Axiom will emit a console warning when a POST, PUT, or PATCH request 
+   * is queued without an Idempotency-Key. Highly recommended to catch bugs in development.
+   * @default false
+   */
+  warnOnMissingIdempotency?: boolean;
+
   /** If true, Axiom will log verbose trace details to the console to aid in debugging. */
   debug?: boolean;
   /** Instructs the engine which built-in adapter to attempt to use if a custom one isn't provided.
@@ -83,6 +102,11 @@ export interface AxiomRequestOptions<TMeta = Record<string, any>> {
   timeout?: number;
   /** Specific headers to append to this single request (e.g., custom Content-Type). */
   headers?: Record<string, string>;
+  /** 
+   * Explicit idempotency key for this specific request. 
+   * Injected as the `Idempotency-Key` header to prevent duplicate executions on the backend.
+   */
+  idempotencyKey?: string;
   /** Inject custom metadata that will survive serialization and persist in the queue */
   metadata?: TMeta;
 }
